@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-36725ef3f57b3475edc25219fb2c3a7ee4f2051f",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.9.1"
+  },
+  "userSourceNameMap": {
+    "contracts/Escrow.sol": "project/contracts/Escrow.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/Escrow.sol": {
+        "content": "// SPDX-License-Identifier: MIT\r\npragma solidity ^0.8.28;\r\n\r\n/**\r\n * @title Simple Escrow Contract\r\n * @notice A basic escrow where a depositor locks funds that can only be released\r\n *         by a trusted arbiter to the beneficiary. This is for learning purposes.\r\n *\r\n * Key Security Features & Lessons:\r\n * - Role-based access control (only arbiter can release funds)\r\n * - Single-use approval (prevents double-spending the same funds)\r\n * - Checks-Effects-Interactions pattern (minimize reentrancy risk)\r\n * - Explicit failure handling on external calls\r\n * - Events for transparency and off-chain monitoring\r\n * - No selfdestruct or delegatecall to reduce attack surface\r\n */\r\ncontract Escrow {\r\n    address public immutable depositor;   // The party who deposits the funds (set once at deployment)\r\n    address public immutable beneficiary; // The party who will receive the funds upon approval\r\n    address public immutable arbiter;     // Trusted third party who decides when to release funds\r\n\r\n    bool public isApproved;               // Prevents multiple approvals / releases\r\n\r\n    /**\r\n     * @dev Emitted when the arbiter approves and funds are released\r\n     */\r\n    event Approved(uint256 amount);\r\n\r\n    /**\r\n     * @dev Emitted when the arbiter refunds the depositor (added for better functionality)\r\n     */\r\n    event Refunded(uint256 amount);\r\n\r\n    /**\r\n     * @notice Constructor sets up the escrow with a one-time deposit\r\n     * @param _beneficiary The address that will receive the funds if approved\r\n     * @param _arbiter The trusted arbiter who controls release/refund\r\n     *\r\n     * Security note: Constructor is payable so the depositor can send ETH immediately.\r\n     * Using `immutable` saves gas and prevents anyone from changing roles after deployment.\r\n     */\r\n    constructor(address _beneficiary, address _arbiter) payable {\r\n        require(_beneficiary != address(0), \"Beneficiary cannot be zero address\");\r\n        require(_arbiter != address(0), \"Arbiter cannot be zero address\");\r\n        require(msg.value > 0, \"Must deposit some Ether\");\r\n\r\n        depositor = msg.sender;\r\n        beneficiary = _beneficiary;\r\n        arbiter = _arbiter;\r\n    }\r\n\r\n    /**\r\n     * @dev Modifier to restrict functions to the arbiter only and ensure it hasn't been used yet\r\n     * Protection: Prevents unauthorized parties from releasing funds and stops replay attacks\r\n     */\r\n    modifier onlyArbiter() {\r\n        require(msg.sender == arbiter, \"Only the arbiter can call this function\");\r\n        require(!isApproved, \"Escrow has already been resolved\");\r\n        _;\r\n    }\r\n\r\n    /**\r\n     * @notice Allows the arbiter to approve the release of all funds to the beneficiary\r\n     * @dev Uses Checks-Effects-Interactions to reduce reentrancy risk\r\n     *\r\n     * Security considerations:\r\n     * - State is updated BEFORE external call (Effects)\r\n     * - Uses low-level call with value for flexibility (recipient could be a contract)\r\n     * - Checks the return value to ensure transfer succeeded\r\n     */\r\n    function approve() external onlyArbiter {\r\n        isApproved = true;                    // Effect: mark as resolved first\r\n\r\n        uint256 balance = address(this).balance;\r\n        require(balance > 0, \"No funds to release\");\r\n\r\n        // Interaction: send funds to beneficiary\r\n        (bool sent, ) = payable(beneficiary).call{value: balance}(\"\");\r\n        require(sent, \"Failed to send Ether to beneficiary\");\r\n\r\n        emit Approved(balance);\r\n    }\r\n\r\n    /**\r\n     * @notice Allows the arbiter to refund all funds back to the depositor\r\n     * @dev Added for a complete escrow (original version lacked dispute handling)\r\n     *\r\n     * This protects the depositor if the beneficiary doesn't fulfill their part of the deal.\r\n     */\r\n    function refund() external onlyArbiter {\r\n        isApproved = true;                    // Effect: mark as resolved\r\n\r\n        uint256 balance = address(this).balance;\r\n        require(balance > 0, \"No funds to refund\");\r\n\r\n        // Interaction: send funds back to depositor\r\n        (bool sent, ) = payable(depositor).call{value: balance}(\"\");\r\n        require(sent, \"Failed to refund Ether to depositor\");\r\n\r\n        emit Refunded(balance);\r\n    }\r\n\r\n    /**\r\n     * @notice View function to check current balance (useful for frontend/off-chain apps)\r\n     */\r\n    function getBalance() external view returns (uint256) {\r\n        return address(this).balance;\r\n    }\r\n}"
+      }
+    }
+  }
+}

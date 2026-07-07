@@ -27,8 +27,8 @@ An Escrow contract acts as a trusted intermediary in blockchain transactions. It
 
 ## Setup
 
-- Clone the repo:```git clone https://github.com/boydjawun/solidity_with_yul.git```
-- cd: ```solidity_with_yul```
+- git clone ```https://github.com/boydjawun/Hardhat_Escrow.git```
+- cd ```Hardhat_Escrow```
 - Install Dependencies: ```npm install```
 - Compile: ```npx hardhat compile```
 - Test: ```npx hardhat test```

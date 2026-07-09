@@ -43,17 +43,45 @@ An Escrow contract acts as a trusted intermediary in blockchain transactions. It
 **Trade-offs in Smart Contract Development:** High-level Solidity improves readability and auditability, but low-level Yul unlocks significant gas efficiency for production contracts where deployment and execution costs matter.
 
 ## Gas Optimization
-The Yul version demonstrates notable gas savings through inline assembly. Below is a comparison chart (approximate values based on testing with Hardhat; actual results may vary with compiler settings and network):
+
+I measured the standard Solidity implementation using Hardhat's gas reporting tools. Here are the results for `Escrow.sol`:
+
+![Solidity Gas Report](https://github.com/boydjawun/Hardhat_Escrow/blob/main/Gas_Report/Escrow_sol.png)
+
+### Solidity Gas Usage (`Escrow.sol`)
+
+| Function / Action     | Gas Cost   | Notes |
+|-----------------------|------------|-------|
+| **Deployment**        | 633,826    | Full contract deployment |
+| `approve()`           | 54,411     | Arbiter releases funds |
+| `refund()`            | 54,410     | Arbiter refunds depositor |
+| `getBalance()`        | 21,399     | View current balance |
+| Getter functions (`arbiter`, `beneficiary`, `depositor`) | ~21,400–21,500 | Public immutable getters |
+
+**Bytecode size**: 2,638 bytes
+
+### Why the Yul Version (`Escrow_in_Yul.sol`) is Cheaper
+
+Even without running a new gas report, the inline Yul version uses **significantly less gas** due to these low-level optimizations:
+
+1. **Direct EVM Opcodes**
+   - Uses `selfbalance()` instead of `address(this).balance`
+   - Raw `sload` / `sstore` for `isApproved` (slot 0)
+   - Manual `call` with minimal overhead
+
+2. **Reduced Safety & ABI Overhead**
+   - Custom errors (4-byte selectors) instead of string messages
+   - Manual `log1` for events instead of Solidity’s `emit`
+   - No unnecessary memory copies or compiler-inserted checks
+
+3. **Smaller Bytecode**
+   - Less compiler-generated boilerplate → lower deployment cost
 
 
-| Function           | Escrow.sol (Solidity) | Escrow_in_Yul.sol | Gas Saved     | % Savings |
-|--------------------|-----------------------|-------------------|---------------|-----------|
-| **Deployment**     | 450,000 gas          | 380,000 gas      | 70,000 gas   | ~15.6%   |
-| **Deposit**        | 45,000 gas           | 32,000 gas       | 13,000 gas   | ~28.9%   |
-| **Release Funds**  | 35,000 gas           | 25,000 gas       | 10,000 gas   | ~28.6%   |
-| **Refund**         | 28,000 gas           | 20,000 gas       | 8,000 gas    | ~28.6%   |
+> The Yul version trades readability for efficiency. It demonstrates real-world techniques used in high-performance contracts (e.g., DEXes, lending protocols) where every gas unit matters.
 
-**Average Savings: ~25%**`
+**Recommendation**: Use pure Solidity for most projects. Drop into inline Yul (or full Yul) only for performance-critical sections after profiling.
+
 
 Notes:
 - Savings primarily from optimized storage access, reduced memory copies, and fewer runtime checks.

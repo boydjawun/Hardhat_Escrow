@@ -12,9 +12,9 @@
 ## Description
 This repository compares two implementations of a basic Escrow contract:
 
-> Escrow.sol: A standard Solidity implementation for holding funds (e.g., ETH) until conditions are met, such as release by a buyer/seller or arbiter.
+> [Escrow.sol](https://github.com/boydjawun/Hardhat_Escrow/blob/main/contracts/Escrow.sol): A standard Solidity implementation for holding funds (e.g., ETH) until conditions are met, such as release by a buyer/seller or arbiter.
 
-> Escrow_in_Yul.sol: The same logic rewritten with significant use of inline Yul assembly for lower-level control over memory, storage, and operations.
+> [Escrow_in_Yul.sol](https://github.com/boydjawun/Hardhat_Escrow/blob/main/EscrowYul/Escrow_in_Yul.sol): The same logic rewritten with significant use of inline Yul assembly for lower-level control over memory, storage, and operations.
 
 ### Brief description of an Escrow contract:
 

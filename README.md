@@ -7,6 +7,7 @@
 - [Setup](#setup)
 - [What I Learned](#what-i-learned)
 - [Gas Optimization](#gas-optimization)
+- [Check-Effect-Interactions](#check-effect-interactions)
 
 
 ## Description
@@ -82,8 +83,108 @@ Even without running a new gas report, the inline Yul version uses **significant
 
 **Recommendation**: Use pure Solidity for most projects. Drop into inline Yul (or full Yul) only for performance-critical sections after profiling.
 
+## Check-Effect-Interactions
+>Check-Effects-Interactions (CEI) is a key security pattern used when writing smart contracts (especially in Solidity) to prevent reentrancy attacks
 
-Notes:
-- Savings primarily from optimized storage access, reduced memory copies, and fewer runtime checks.
-- Always test thoroughly—Yul increases complexity and potential for subtle bugs.
-- Use Hardhat's gas reporter plugin for precise measurements.
+1. First Check, validating conditions like require(balance > 0, "No funds to release") so the function fails fast.
+2. Then Effects, updating internal state such as isApproved = true before touching the outside world
+3. Finally Interactions, making external calls like (bool sent, ) = payable(beneficiary).call{value: balance}("") paired with require(sent, "Failed to send Ether to beneficiary"), since this is the point where control leaves the contract and a malicious receiver could attempt to re-enter.
+   
+### Solidity approve() function
+```
+/**
+     * @notice Allows the arbiter to approve the release of all funds to the beneficiary
+     * @dev Uses Checks-Effects-Interactions to reduce reentrancy risk
+     *
+     * Security considerations:
+     * - State is updated BEFORE external call (Effects)
+     * - Uses low-level call with value for flexibility (recipient could be a contract)
+     * - Checks the return value to ensure transfer succeeded
+     */
+
+function approve() external onlyArbiter {
+
+    // === CHECK ===
+    uint256 balance = address(this).balance;
+    require(balance > 0, "No funds to release");
+
+    // === EFFECT ===
+    isApproved = true; // Effect: update internal state before external call
+
+    // === INTERACTION ===
+    // Interaction: send funds to beneficiary
+    (bool sent, ) = payable(beneficiary).call{value: balance}("");
+    require(sent, "Failed to send Ether to beneficiary");
+
+    // === EFFECT (Event emission) ===
+    emit Approved(balance);
+}
+```
+### Solidity w/Yul approve() function
+>This contract uses a slightly non-canonical ordering, but preserves the core security guarantee CEI is meant to provide: no interaction happens until the resolved-state effect is locked in.
+
+```
+/**
+ Selector & Topic0 Reference (keccak256-derived)
+
+* Custom Error Selectors (first 4 bytes of keccak256(signature)):
+    *   ZeroAddress()      -> 0xd92e233d
+    *   ZeroDeposit()      -> 0x56316e87
+    *   NotArbiter()       -> 0xccb665a6
+    *   AlreadyResolved()  -> 0x6d5703c2
+    *   NoFunds()          -> 0x43f9e110
+    *   TransferFailed()   -> 0x90b8ec18
+
+* Event Topic0s (full 32-byte keccak256(signature), used as topic0 in logs):
+    *   Approved(uint256) -> 0x3ad93af63cb7967b23e4fb500b7d7d28b07516325dcf341f88bebf959d82c1cb
+    *   Refunded(uint256) -> 0x3d2a04f53164bedf9a8a46353305d6b2d2261410406df3b41f99ce6489dc003c
+*/
+function approve() external {
+    address _arbiter = arbiter;
+
+    assembly {
+        // Check: only arbiter can call
+        if iszero(eq(caller(), _arbiter)) {
+            mstore(0x00, 0xccb665a600000000000000000000000000000000000000000000000000000000)
+            revert(0x00, 0x04) // NotArbitrator()
+        }
+
+        // Check: escrow not already resolved
+        if sload(0) {
+            mstore(0x00, 0x6d5703c200000000000000000000000000000000000000000000000000000000)
+            revert(0x00, 0x04) // AlreadyResolved()
+        }
+
+        // Effect: mark resolved before balance check / external call
+        sstore(0, 1)
+
+        // Check: contract must hold funds to release
+        let bal := selfbalance()
+        if iszero(bal) {
+            mstore(0x00, 0x43f9e11000000000000000000000000000000000000000000000000000000000)
+            revert(0x00, 0x04) // NoFundsToRelease()
+        }
+    }
+
+    address _beneficiary = beneficiary;
+
+    assembly {
+        // Interaction: send balance to beneficiary
+        let bal := selfbalance()
+        let sent := call(gas(), _beneficiary, bal, 0, 0, 0, 0)
+
+        if iszero(sent) {
+            mstore(0x00, 0x90b8ec1800000000000000000000000000000000000000000000000000000000)
+            revert(0x00, 0x04) // TransferFailed()
+        }
+
+        // Effect: emit Approved(balance)
+        mstore(0x00, bal)
+        log1(
+            0x00,
+            0x20,
+            0x3ad93af63cb7967b23e4fb500b7d7d28b07516325dcf341f88bebf959d82c1cb
+        )
+    }
+}
+```

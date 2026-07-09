@@ -69,15 +69,19 @@ contract Escrow {
      * - Checks the return value to ensure transfer succeeded
      */
     function approve() external onlyArbiter {
-        isApproved = true;                    // Effect: mark as resolved first
 
+        //=== CHECK ===
         uint256 balance = address(this).balance;
         require(balance > 0, "No funds to release");
 
-        // Interaction: send funds to beneficiary
-        (bool sent, ) = payable(beneficiary).call{value: balance}("");
+        //=== EFFECT ===
+        isApproved = true;   // Effect: mark as resolved 
+
+        //=== Interaction ===
+        (bool sent, ) = payable(beneficiary).call{value: balance}(""); //Send funds to benficiary
         require(sent, "Failed to send Ether to beneficiary");
 
+        //=== EFFECT ===
         emit Approved(balance);
     }
 

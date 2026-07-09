@@ -81,7 +81,7 @@ contract Escrow {
         (bool sent, ) = payable(beneficiary).call{value: balance}(""); //Send funds to benficiary
         require(sent, "Failed to send Ether to beneficiary");
 
-        //=== EFFECT ===
+        //=== EFFECT (Event emission) ===
         emit Approved(balance);
     }
 
